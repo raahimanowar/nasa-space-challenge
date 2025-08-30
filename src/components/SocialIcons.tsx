@@ -33,6 +33,8 @@ import { SocialIconsAnimation } from "./social-icons-animation";
 //   },
 // ];
 
+
+// @ts-expect-error blah
 const SocialIcons = ({iconData}) => {
   return (
     <div>

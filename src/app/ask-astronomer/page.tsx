@@ -3,32 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import StarField from "@/components/StarField";
+import Navbar from "@/components/Navbar";
 
 interface Message {
   id: string;
   type: "user" | "bot";
   content: string;
   timestamp: Date;
-}
-
-interface AsteroidData {
-  name: string;
-  diameter: {
-    kilometers: {
-      estimated_diameter_min: number;
-      estimated_diameter_max: number;
-    };
-  };
-  is_potentially_hazardous_asteroid: boolean;
-  close_approach_data: Array<{
-    close_approach_date: string;
-    relative_velocity: {
-      kilometers_per_second: string;
-    };
-    miss_distance: {
-      kilometers: string;
-    };
-  }>;
 }
 
 export default function AskAstronomer() {
@@ -42,7 +23,7 @@ export default function AskAstronomer() {
     setMessages([{
       id: "welcome",
       type: "bot",
-      content: "Hello! I'm your asteroid expert. Ask me about Near-Earth Objects (NEOs), their orbits, sizes, or potential hazards. What would you like to know?",
+      content: "Hi! I'm AskAstronomer, your AI assistant for real-time asteroid data from NASA.\n\nAsk me about current asteroids, potentially hazardous objects, or space missions!",
       timestamp: new Date(),
     }]);
     setMounted(true);
@@ -56,109 +37,6 @@ export default function AskAstronomer() {
     scrollToBottom();
   }, [messages]);
 
-  const fetchAsteroidData = async (query: string): Promise<string> => {
-    try {
-      const today = new Date();
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() + 7);
-      
-      const startDateStr = today.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-      
-      const response = await fetch(
-        `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDateStr}&end_date=${endDateStr}&api_key=DEMO_KEY`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch asteroid data');
-      }
-      
-      const data = await response.json();
-      const asteroids: AsteroidData[] = [];
-      
-      Object.values(data.near_earth_objects).forEach((dayAsteroids: unknown) => {
-        if (Array.isArray(dayAsteroids)) {
-          asteroids.push(...(dayAsteroids as AsteroidData[]));
-        }
-      });
-
-      if (query.toLowerCase().includes('hazardous') || query.toLowerCase().includes('dangerous')) {
-        const hazardousAsteroids = asteroids.filter(a => a.is_potentially_hazardous_asteroid);
-        if (hazardousAsteroids.length > 0) {
-          const asteroid = hazardousAsteroids[0];
-          return `I found ${hazardousAsteroids.length} potentially hazardous asteroids approaching Earth this week. Here's one: ${asteroid.name} with a diameter between ${asteroid.diameter.kilometers.estimated_diameter_min.toFixed(2)} and ${asteroid.diameter.kilometers.estimated_diameter_max.toFixed(2)} kilometers. It will approach Earth on ${asteroid.close_approach_data[0]?.close_approach_date} at a distance of ${parseInt(asteroid.close_approach_data[0]?.miss_distance.kilometers).toLocaleString()} kilometers.`;
-        }
-        return "No potentially hazardous asteroids are approaching Earth this week according to current data.";
-      }
-
-      if (query.toLowerCase().includes('size') || query.toLowerCase().includes('diameter') || query.toLowerCase().includes('big')) {
-        const largestAsteroid = asteroids.reduce((prev, current) => 
-          (prev.diameter.kilometers.estimated_diameter_max > current.diameter.kilometers.estimated_diameter_max) ? prev : current
-        );
-        return `The largest asteroid approaching Earth this week is ${largestAsteroid.name} with an estimated diameter between ${largestAsteroid.diameter.kilometers.estimated_diameter_min.toFixed(2)} and ${largestAsteroid.diameter.kilometers.estimated_diameter_max.toFixed(2)} kilometers.`;
-      }
-
-      if (query.toLowerCase().includes('closest') || query.toLowerCase().includes('near')) {
-        const closestAsteroid = asteroids.reduce((prev, current) => {
-          const prevDistance = parseInt(prev.close_approach_data[0]?.miss_distance.kilometers || '999999999');
-          const currentDistance = parseInt(current.close_approach_data[0]?.miss_distance.kilometers || '999999999');
-          return prevDistance < currentDistance ? prev : current;
-        });
-        return `The closest asteroid this week is ${closestAsteroid.name}, which will pass at a distance of ${parseInt(closestAsteroid.close_approach_data[0]?.miss_distance.kilometers).toLocaleString()} kilometers on ${closestAsteroid.close_approach_data[0]?.close_approach_date}.`;
-      }
-
-      if (query.toLowerCase().includes('fast') || query.toLowerCase().includes('speed') || query.toLowerCase().includes('velocity')) {
-        const fastestAsteroid = asteroids.reduce((prev, current) => {
-          const prevSpeed = parseFloat(prev.close_approach_data[0]?.relative_velocity.kilometers_per_second || '0');
-          const currentSpeed = parseFloat(current.close_approach_data[0]?.relative_velocity.kilometers_per_second || '0');
-          return prevSpeed > currentSpeed ? prev : current;
-        });
-        return `The fastest asteroid this week is ${fastestAsteroid.name}, traveling at ${parseFloat(fastestAsteroid.close_approach_data[0]?.relative_velocity.kilometers_per_second).toFixed(2)} km/s (${(parseFloat(fastestAsteroid.close_approach_data[0]?.relative_velocity.kilometers_per_second) * 3600).toFixed(0)} km/h).`;
-      }
-
-      if (asteroids.length > 0) {
-        return `This week, ${asteroids.length} Near-Earth Objects are being tracked. The average size ranges from ${(asteroids.reduce((sum, a) => sum + a.diameter.kilometers.estimated_diameter_min, 0) / asteroids.length).toFixed(2)} to ${(asteroids.reduce((sum, a) => sum + a.diameter.kilometers.estimated_diameter_max, 0) / asteroids.length).toFixed(2)} kilometers in diameter.`;
-      }
-
-      return "I found information about several asteroids, but I need a more specific question to provide detailed insights.";
-    } catch {
-      return "I'm having trouble accessing the latest asteroid data right now. However, I can tell you that NASA tracks thousands of Near-Earth Objects, with new discoveries made regularly. Most asteroids pose no threat to Earth, but we continuously monitor them for any potential impacts.";
-    }
-  };
-
-  const generateResponse = async (userMessage: string): Promise<string> => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-      return "Hello! I'm here to help you learn about asteroids and Near-Earth Objects. You can ask me about their sizes, orbits, potential hazards, or any specific asteroid you're curious about.";
-    }
-
-    if (lowerMessage.includes('what is') && lowerMessage.includes('asteroid')) {
-      return "An asteroid is a rocky object that orbits the Sun. Most asteroids are found in the asteroid belt between Mars and Jupiter, but some have orbits that bring them close to Earth - these are called Near-Earth Objects (NEOs). They range in size from small rocks to objects hundreds of kilometers across.";
-    }
-
-    if (lowerMessage.includes('impact') || lowerMessage.includes('hit earth')) {
-      return "Large asteroid impacts are extremely rare. NASA and other space agencies continuously monitor Near-Earth Objects to detect any potential threats decades in advance. The last major impact was 66 million years ago, which contributed to the extinction of dinosaurs. Today, we have planetary defense systems in development to deflect dangerous asteroids if needed.";
-    }
-
-    if (lowerMessage.includes('how many') || lowerMessage.includes('count')) {
-      const apiResponse = await fetchAsteroidData(userMessage);
-      return apiResponse;
-    }
-
-    if (lowerMessage.includes('data') || lowerMessage.includes('current') || lowerMessage.includes('this week')) {
-      const apiResponse = await fetchAsteroidData(userMessage);
-      return apiResponse;
-    }
-
-    const keywordResponse = await fetchAsteroidData(userMessage);
-    if (keywordResponse.includes('I found')) {
-      return keywordResponse;
-    }
-
-    return "That's an interesting question about asteroids! While I can provide information about Near-Earth Objects using NASA's data, I'd be happy to help if you ask about specific aspects like sizes, speeds, potential hazards, or current asteroid approaches. What specific information are you looking for?";
-  };
-
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -170,25 +48,81 @@ export default function AskAstronomer() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentMessage = inputValue;
     setInputValue("");
     setIsLoading(true);
 
     try {
-      const response = await generateResponse(inputValue);
+      const response = await fetch('/api/ask-astronomer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: currentMessage }),
+      });
+
+      const data = await response.json();
       
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
-        content: response,
+        content: data.response || data.error || "I'm sorry, I couldn't process your request.",
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, botMessage]);
-    } catch {
+    } catch (error) {
+      console.error('Error sending message:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
-        content: "I'm sorry, I encountered an error while processing your question. Please try again.",
+        content: "I'm sorry, I encountered a network error while processing your question. Please check your connection and try again.",
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickMessage = async (message: string) => {
+    if (isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/ask-astronomer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: message }),
+      });
+
+      const data = await response.json();
+      
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "bot",
+        content: data.response || data.error || "I'm sorry, I couldn't process your request.",
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: "bot",
+        content: "I'm sorry, I encountered a network error while processing your question. Please check your connection and try again.",
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -208,14 +142,15 @@ export default function AskAstronomer() {
     return (
       <div className="min-h-screen bg-space-black relative overflow-hidden">
         <StarField />
+        <Navbar />
         <div className="relative z-10 container mx-auto px-4 py-8 max-w-4xl">
-          <div className="bg-space-blue/20 backdrop-blur-md rounded-lg border border-space-teal/30 h-[calc(100vh-4rem)] flex flex-col">
+          <div className="bg-space-blue/20 backdrop-blur-md rounded-lg border border-space-teal/30 h-[calc(100vh-8rem)] flex flex-col mt-20">
             <div className="p-6 border-b border-space-teal/30">
               <h1 className="text-3xl font-bold text-white text-center">
                 AskAstronomer
               </h1>
               <p className="text-space-teal text-center mt-2">
-                Loading...
+                Loading NASA data...
               </p>
             </div>
           </div>
@@ -227,20 +162,21 @@ export default function AskAstronomer() {
   return (
     <div className="min-h-screen bg-space-black relative overflow-hidden">
       <StarField />
+      <Navbar />
 
       <div className="relative z-10 container mx-auto px-4 py-8 max-w-4xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="bg-space-blue/20 backdrop-blur-md rounded-lg border border-space-teal/30 h-[calc(100vh-4rem)] flex flex-col"
+          className="bg-space-blue/20 backdrop-blur-md rounded-lg border border-space-teal/30 h-[calc(100vh-8rem)] flex flex-col mt-20"
         >
           <div className="p-6 border-b border-space-teal/30">
             <h1 className="text-3xl font-bold text-white text-center">
               AskAstronomer
             </h1>
             <p className="text-space-teal text-center mt-2">
-              Your AI companion for asteroid and Near-Earth Object information
+              Learn what lies beyond our world.
             </p>
           </div>
 
@@ -254,14 +190,14 @@ export default function AskAstronomer() {
                 className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[80%] p-4 rounded-lg ${
+                  className={`max-w-[80%] p-4 rounded-2xl shadow-lg ${
                     message.type === "user"
-                      ? "bg-space-teal text-space-black"
-                      : "bg-space-purple/50 text-white border border-space-pink/30"
+                      ? "bg-gradient-to-br from-space-teal to-space-teal/80 text-space-black ml-12"
+                      : "bg-gradient-to-br from-space-purple/60 to-space-purple/40 text-white border border-space-pink/30 mr-12 backdrop-blur-sm"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                  <span className="text-xs opacity-70 mt-2 block">
+                  <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                  <span className="text-xs opacity-60 mt-3 block text-right">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -270,15 +206,18 @@ export default function AskAstronomer() {
             
             {isLoading && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 className="flex justify-start"
               >
-                <div className="bg-space-purple/50 text-white border border-space-pink/30 p-4 rounded-lg">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce-delay-1"></div>
-                    <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce-delay-2"></div>
+                <div className="bg-gradient-to-br from-space-purple/60 to-space-purple/40 text-white border border-space-pink/30 p-4 rounded-2xl shadow-lg mr-12 backdrop-blur-sm">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce-delay-1"></div>
+                      <div className="w-2 h-2 bg-space-teal rounded-full animate-bounce-delay-2"></div>
+                    </div>
+                    <span className="text-sm text-space-teal opacity-80">AI is thinking...</span>
                   </div>
                 </div>
               </motion.div>
@@ -287,13 +226,43 @@ export default function AskAstronomer() {
           </div>
 
           <div className="p-6 border-t border-space-teal/30">
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={() => handleQuickMessage("What hazardous asteroids are approaching Earth?")}
+                disabled={isLoading}
+                className="px-3 py-1 text-sm bg-space-purple/30 hover:bg-space-purple/50 text-space-teal rounded-full border border-space-teal/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Hazardous asteroids
+              </button>
+              <button
+                onClick={() => handleQuickMessage("Show me the largest asteroid this week")}
+                disabled={isLoading}
+                className="px-3 py-1 text-sm bg-space-purple/30 hover:bg-space-purple/50 text-space-teal rounded-full border border-space-teal/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Largest asteroid
+              </button>
+              <button
+                onClick={() => handleQuickMessage("Which asteroid is closest to Earth?")}
+                disabled={isLoading}
+                className="px-3 py-1 text-sm bg-space-purple/30 hover:bg-space-purple/50 text-space-teal rounded-full border border-space-teal/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Closest approach
+              </button>
+              <button
+                onClick={() => handleQuickMessage("What is the fastest asteroid?")}
+                disabled={isLoading}
+                className="px-3 py-1 text-sm bg-space-purple/30 hover:bg-space-purple/50 text-space-teal rounded-full border border-space-teal/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Fastest speed
+              </button>
+            </div>
             <div className="flex space-x-4">
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask about asteroids, NEOs, sizes, hazards..."
+                placeholder="Ask about current asteroids, hazardous NEOs, sizes, speeds..."
                 className="flex-1 bg-space-black/50 border border-space-teal/30 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-space-teal"
                 disabled={isLoading}
               />

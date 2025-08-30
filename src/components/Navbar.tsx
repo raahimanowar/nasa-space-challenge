@@ -80,7 +80,7 @@ export default function Navbar() {
             <NavLink href="#3d-section" isButton>
               Launch 3D View
             </NavLink>
-            <NavLink href="/ask-astronomer" isButton newTab>
+            <NavLink href="/ask-astronomer" isButton>
               AskAstronomer
             </NavLink>
             {/* <NavLink href="#info">Info</NavLink> */}
@@ -147,7 +147,6 @@ export default function Navbar() {
               href="/ask-astronomer"
               onClick={() => setIsMenuOpen(false)}
               isButton
-              newTab
             >
               AskAstronomer
             </MobileNavLink>

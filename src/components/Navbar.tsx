@@ -1,25 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 50) {
-        setScrolled(true);
-      } else {
-        setScrolled(false);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   const navVariants = {
     hidden: { opacity: 0, y: -20 },
@@ -94,6 +80,9 @@ export default function Navbar() {
             <NavLink href="#3d-section" isButton>
               Launch 3D View
             </NavLink>
+            <NavLink href="/ask-astronomer" isButton newTab>
+              AskAstronomer
+            </NavLink>
             {/* <NavLink href="#info">Info</NavLink> */}
             {/* <NavLink href="#contact">Contact</NavLink> */}
           </motion.nav>
@@ -154,6 +143,14 @@ export default function Navbar() {
             >
               Launch 3D View
             </MobileNavLink>
+            <MobileNavLink
+              href="/ask-astronomer"
+              onClick={() => setIsMenuOpen(false)}
+              isButton
+              newTab
+            >
+              AskAstronomer
+            </MobileNavLink>
           </div>
         </motion.div>
       </div>
@@ -165,15 +162,19 @@ function NavLink({
   href,
   children,
   isButton,
+  newTab,
 }: {
   href: string;
   children: React.ReactNode;
   isButton?: boolean;
+  newTab?: boolean;
 }) {
   return (
     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }}>
       <Link
         href={href}
+        target={newTab ? "_blank" : undefined}
+        rel={newTab ? "noopener noreferrer" : undefined}
         className={`font-medium transition-all duration-300 ${
           isButton
             ? "bg-space-teal hover:bg-space-pink text-space-black px-6 py-2 rounded-full"
@@ -191,11 +192,13 @@ function MobileNavLink({
   onClick,
   children,
   isButton,
+  newTab,
 }: {
   href: string;
   onClick: () => void;
   children: React.ReactNode;
   isButton?: boolean;
+  newTab?: boolean;
 }) {
   const menuItemVariants = {
     closed: { opacity: 0, y: -10 },
@@ -207,6 +210,8 @@ function MobileNavLink({
       <Link
         href={href}
         onClick={onClick}
+        target={newTab ? "_blank" : undefined}
+        rel={newTab ? "noopener noreferrer" : undefined}
         className={`block font-medium transition-all duration-300 ${
           isButton
             ? "bg-space-teal hover:bg-space-pink text-space-black px-6 py-2 rounded-full text-center"

@@ -9,7 +9,7 @@ import * as THREE from 'three';
 // eslint-disable-next-line 
 type GLTFResult = any;
 
-function EarthGLB({ impacted }: { impacted: boolean }) {
+function EarthGLB({  }: { impacted: boolean }) {
   // load both intact and cracked scenes
   const intact = useGLTF('/models/earth.glb') as GLTFResult;
 //   const cracked = useGLTF('/models/earth-cracked.glb') as GLTFResult;

@@ -83,6 +83,9 @@ export default function Navbar() {
             <NavLink href="/ask-astronomer" isButton>
               AskAstronomer
             </NavLink>
+            <NavLink href="/meteor-strike" isButton>
+              Meteor Strike
+            </NavLink>
             {/* <NavLink href="#info">Info</NavLink> */}
             {/* <NavLink href="#contact">Contact</NavLink> */}
           </motion.nav>
@@ -149,6 +152,13 @@ export default function Navbar() {
               isButton
             >
               AskAstronomer
+            </MobileNavLink>
+            <MobileNavLink
+              href="/meteor-strike"
+              onClick={() => setIsMenuOpen(false)}
+              isButton
+            >
+              Meteor Strike
             </MobileNavLink>
           </div>
         </motion.div>

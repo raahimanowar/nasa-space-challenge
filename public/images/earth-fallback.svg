@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <defs>
+    <radialGradient id="earthGrad" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" style="stop-color:#4FC3F7;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#2196F3;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#1976D2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0D47A1;stop-opacity:1" />
+    </radialGradient>
+    <linearGradient id="continentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#2E7D32;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1B5E20;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Ocean background -->
+  <circle cx="400" cy="400" r="350" fill="url(#earthGrad)" opacity="0.9"/>
+  
+  <!-- Continents -->
+  <path d="M200 200 Q300 150 450 180 Q500 200 550 250 Q580 300 520 350 Q400 380 300 340 Q250 300 200 200Z" fill="url(#continentGrad)" opacity="0.8"/>
+  <path d="M100 300 Q180 280 250 320 Q280 350 240 400 Q180 420 120 380 Q80 340 100 300Z" fill="url(#continentGrad)" opacity="0.7"/>
+  <path d="M600 180 Q680 160 720 200 Q750 250 700 290 Q650 310 600 280 Q580 230 600 180Z" fill="url(#continentGrad)" opacity="0.8"/>
+  
+  <!-- Atmosphere glow -->
+  <circle cx="400" cy="400" r="355" fill="none" stroke="#81C784" stroke-width="3" opacity="0.6"/>
+  <circle cx="400" cy="400" r="365" fill="none" stroke="#A5D6A7" stroke-width="2" opacity="0.4"/>
+  
+  <!-- Cloud patterns -->
+  <ellipse cx="300" cy="250" rx="80" ry="25" fill="white" opacity="0.3"/>
+  <ellipse cx="500" cy="320" rx="60" ry="20" fill="white" opacity="0.25"/>
+  <ellipse cx="150" cy="380" rx="40" ry="15" fill="white" opacity="0.3"/>
+</svg>

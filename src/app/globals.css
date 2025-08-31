@@ -108,3 +108,117 @@ body {
   animation: bounce 1s infinite;
   animation-delay: 0.2s;
 }
+
+/* Game specific styles */
+.game-container {
+  width: min(90vw, 800px);
+  height: min(70vh, 600px);
+  max-width: 800px;
+  max-height: 600px;
+}
+
+.earth-container {
+  height: 35%;
+  min-height: 180px;
+}
+
+.spaceship-container {
+  width: min(8vw, 80px);
+  height: min(6vw, 60px);
+  bottom: 35%;
+  min-width: 50px;
+  min-height: 35px;
+}
+
+.bullet {
+  width: min(1vw, 8px);
+  height: min(2vh, 15px);
+  min-width: 4px;
+  min-height: 8px;
+}
+
+.asteroid {
+  width: min(8vw, 80px);
+  height: min(8vw, 80px);
+  min-width: 50px;
+  min-height: 50px;
+}
+
+.clip-triangle {
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+/* Dynamic positioning utilities */
+.dynamic-position {
+  position: absolute;
+}
+
+@media (max-width: 768px) {
+  .game-container {
+    width: 95vw;
+    height: 60vh;
+    min-height: 400px;
+  }
+  
+  .earth-container {
+    height: 40%;
+    min-height: 150px;
+  }
+  
+  .spaceship-container {
+    width: 12vw;
+    height: 9vw;
+    bottom: 40%;
+    min-width: 45px;
+    min-height: 32px;
+  }
+  
+  .bullet {
+    width: 1.5vw;
+    height: 3vh;
+    min-width: 3px;
+    min-height: 6px;
+  }
+  
+  .asteroid {
+    width: 12vw;
+    height: 12vw;
+    min-width: 45px;
+    min-height: 45px;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-container {
+    width: 98vw;
+    height: 55vh;
+    min-height: 350px;
+  }
+  
+  .earth-container {
+    height: 45%;
+    min-height: 120px;
+  }
+  
+  .spaceship-container {
+    width: 15vw;
+    height: 12vw;
+    bottom: 45%;
+    min-width: 40px;
+    min-height: 28px;
+  }
+  
+  .bullet {
+    width: 2vw;
+    height: 4vh;
+    min-width: 3px;
+    min-height: 5px;
+  }
+  
+  .asteroid {
+    width: 15vw;
+    height: 15vw;
+    min-width: 40px;
+    min-height: 40px;
+  }
+}

@@ -143,7 +143,26 @@ function analyzeAsteroids(asteroids: NeoData[]) {
   };
 }
 
-function generateResponse(queryType: string, analysis: any, userMessage: string = ''): string {
+interface AsteroidAnalysis {
+  totalCount: number;
+  hazardousCount: number;
+  hazardousAsteroids: NeoData[];
+  closest: {
+    asteroid: NeoData;
+    distance: number;
+    distanceFromMoon: number;
+  };
+  largest: {
+    asteroid: NeoData;
+    diameter: number;
+  };
+  fastest: {
+    asteroid: NeoData;
+    speed: number;
+  };
+}
+
+function generateResponse(queryType: string, analysis: AsteroidAnalysis, userMessage: string = ''): string {
   // If no data available, return "I don't have info"
   if (!analysis || !analysis.totalCount) {
     return "I don't have current asteroid data available right now. Please try again later.";

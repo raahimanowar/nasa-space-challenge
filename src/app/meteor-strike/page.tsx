@@ -1,19 +1,17 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF, Trail } from '@react-three/drei';
 import * as THREE from 'three';
 import { useRouter } from 'next/navigation';
 import { Space_Mono } from 'next/font/google';
 
-// Space-themed font
 const spaceMono = Space_Mono({
     subsets: ['latin'],
     weight: ['400', '700'],
 });
 
-// Define the types for our game objects
 interface Bullet {
     id: string;
     position: THREE.Vector3;
@@ -30,11 +28,9 @@ interface Asteroid {
     speed: number;
 }
 
-// Counter for generating unique IDs
 let idCounter = 0;
 const generateUniqueId = () => `${Date.now()}_${idCounter++}`;
 
-// Earth Model Component
 const EarthScene: React.FC = () => {
     const { scene: earthScene } = useGLTF('/models/earth.glb');
     const earthRef = useRef<THREE.Group>(null!);
@@ -59,11 +55,17 @@ const EarthScene: React.FC = () => {
     );
 };
 
-// Bullet Model Component with Trail
-const Bullet: React.FC<{ position: THREE.Vector3; scale: number }> = ({ position, scale }) => {
+const Bullet: React.FC<{ position: THREE.Vector3; scale: number; velocity: THREE.Vector3 }> = ({ position, scale, velocity }) => {
+    const quaternion = useMemo(() => {
+        const dir = velocity.clone().normalize();
+        const quat = new THREE.Quaternion();
+        quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        return quat;
+    }, [velocity]);
+
     return (
         <Trail width={0.5} length={5} color="#ff4400" attenuation={(t) => t * t}>
-            <mesh position={position.toArray()}>
+            <mesh position={position.toArray()} quaternion={quaternion}>
                 <cylinderGeometry args={[0.4, 0.4, 1.2, 12]} />
                 <meshStandardMaterial
                     color="#ff4400"
@@ -84,7 +86,43 @@ const Bullet: React.FC<{ position: THREE.Vector3; scale: number }> = ({ position
     );
 };
 
-// Spaceship Component
+interface EngineFlameProps {
+    pitch: number;
+    isThrusting: boolean;
+    shipPosition: { x: number; y: number; z: number };
+}
+
+const EngineFlame: React.FC<EngineFlameProps> = ({ pitch, isThrusting, shipPosition }) => {
+    const flameRef = useRef<THREE.Group>(null!);
+
+    useFrame((state) => {
+        if (flameRef.current) {
+            flameRef.current.position.x = shipPosition.x;
+            flameRef.current.position.y = shipPosition.y;
+            const time = state.clock.getElapsedTime();
+            const noise = Math.sin(time * 20) * 0.1 + 1;
+            const scale = isThrusting ? 1.5 * noise : 0.5 * noise;
+            flameRef.current.scale.set(scale, scale, scale);
+            flameRef.current.position.z = 2 + Math.abs(pitch) * 20;
+        }
+    });
+
+    return (
+        <group ref={flameRef} position={[shipPosition.x, shipPosition.y, -2]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <coneGeometry args={[0.8, -10, 16]} />
+                <meshBasicMaterial
+                    color="#ff4400"
+                    transparent
+                    opacity={0.8}
+                    blending={THREE.AdditiveBlending}
+                />
+            </mesh>
+            <pointLight color="#ff8800" intensity={3} distance={6} />
+        </group>
+    );
+};
+
 interface SpaceshipModelProps {
     bullets: Bullet[];
     setBullets: React.Dispatch<React.SetStateAction<Bullet[]>>;
@@ -96,37 +134,48 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
     const { scene: shipScene } = useGLTF('/models/spaceship.glb');
     const shipRef = useRef<THREE.Group>(null!);
     const [shipPosition, setPosition] = useState({ x: 0, y: -11, z: 0 });
+    const [pitch, setPitch] = useState(0.2);
+    const [isThrusting, setIsThrusting] = useState(false);
+    const [velocity, setVelocity] = useState({ x: 0, y: 0 });
     const speed = 0.5;
+    const shipScale = 0.015;
     const lastShot = useRef<number>(0);
+    const lastThrustTime = useRef<number>(0);
 
     type KeyState = {
         ArrowLeft: boolean;
         ArrowRight: boolean;
+        ArrowUp: boolean;
+        ArrowDown: boolean;
         Space: boolean;
     };
 
     const [keys, setKeys] = useState<KeyState>({
         ArrowLeft: false,
         ArrowRight: false,
+        ArrowUp: false,
+        ArrowDown: false,
         Space: false,
     });
-    
-    // Mobile touch controls state
+
     const touchStartRef = useRef<{ x: number, y: number } | null>(null);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (gameOver) return;
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.code === 'Space') {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.code === 'Space') {
                 setKeys(prev => ({ ...prev, [e.code === 'Space' ? 'Space' : e.key]: true }));
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    setIsThrusting(true);
+                    lastThrustTime.current = Date.now();
+                }
                 if (e.code === 'Space' && Date.now() - lastShot.current > 200) {
                     lastShot.current = Date.now();
-                    const bulletPosition = new THREE.Vector3(
-                        shipPosition.x,
-                        shipPosition.y + 1.5,
-                        shipPosition.z - 10
-                    );
-                    const bulletVelocity = new THREE.Vector3(0, 0, -0.3);
+                    const localMuzzle = new THREE.Vector3(0, 1.5 / shipScale, 10 / shipScale);
+                    const euler = new THREE.Euler(pitch, Math.PI, 0, 'XYZ');
+                    const worldOffset = localMuzzle.clone().applyEuler(euler).multiplyScalar(shipScale);
+                    const bulletPosition = new THREE.Vector3(shipPosition.x, shipPosition.y, shipPosition.z).add(worldOffset);
+                    const bulletVelocity = new THREE.Vector3(0, Math.sin(pitch) * 0.3, -Math.cos(pitch) * 0.3);
                     setBullets(prev => [...prev, {
                         id: generateUniqueId(),
                         position: bulletPosition,
@@ -139,8 +188,11 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
         };
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.code === 'Space') {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.code === 'Space') {
                 setKeys(prev => ({ ...prev, [e.code === 'Space' ? 'Space' : e.key]: false }));
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    setIsThrusting(false);
+                }
             }
         };
 
@@ -148,6 +200,8 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
             if (gameOver) return;
             e.preventDefault();
             touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            setIsThrusting(true);
+            lastThrustTime.current = Date.now();
         };
 
         const handleTouchMove = (e: TouchEvent) => {
@@ -156,9 +210,9 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
             const touchX = e.touches[0].clientX;
             const deltaX = touchX - touchStartRef.current.x;
             const screenWidth = window.innerWidth;
-            const worldWidth = 50; 
+            const worldWidth = 50;
             const moveAmount = (deltaX / screenWidth) * worldWidth;
-            
+
             setPosition(prev => ({
                 ...prev,
                 x: Math.min(Math.max(prev.x + moveAmount, -25), 25),
@@ -170,12 +224,11 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
             if (gameOver) return;
             if (Date.now() - lastShot.current > 200) {
                 lastShot.current = Date.now();
-                const bulletPosition = new THREE.Vector3(
-                    shipPosition.x,
-                    shipPosition.y + 1.5,
-                    shipPosition.z - 10
-                );
-                const bulletVelocity = new THREE.Vector3(0, 0, -0.3);
+                const localMuzzle = new THREE.Vector3(0, 1.5 / shipScale, 10 / shipScale);
+                const euler = new THREE.Euler(pitch, Math.PI, 0, 'XYZ');
+                const worldOffset = localMuzzle.clone().applyEuler(euler).multiplyScalar(shipScale);
+                const bulletPosition = new THREE.Vector3(shipPosition.x, shipPosition.y, shipPosition.z).add(worldOffset);
+                const bulletVelocity = new THREE.Vector3(0, Math.sin(pitch) * 0.3, -Math.cos(pitch) * 0.3);
                 setBullets(prev => [...prev, {
                     id: generateUniqueId(),
                     position: bulletPosition,
@@ -184,6 +237,7 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
                     distance: 0,
                 }]);
             }
+            setIsThrusting(false);
             touchStartRef.current = null;
         };
 
@@ -200,21 +254,57 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
             window.removeEventListener('touchmove', handleTouchMove);
             window.removeEventListener('touchend', handleTouchEnd);
         };
-    }, [shipPosition, setBullets, gameOver]);
+    }, [shipPosition, setBullets, gameOver, pitch]);
 
-    useFrame(() => {
+    useFrame((state, delta) => {
         if (gameOver) return;
+
+        // Apply stronger damping and less responsive movement
+        const damping = 0.85; // Increased damping for quicker stopping
+        let newVelocityX = velocity.x * damping;
+        const newVelocityY = velocity.y * damping;
+
+        // Apply thrust with reduced acceleration
         if (keys.ArrowLeft) {
-            setPosition(prev => ({
-                ...prev,
-                x: Math.max(prev.x - speed, -25),
-            }));
+            newVelocityX = Math.max(newVelocityX - speed * delta * 15, -speed * 1.5); // Reduced acceleration and max velocity
+            setIsThrusting(true);
+            lastThrustTime.current = Date.now();
         }
         if (keys.ArrowRight) {
-            setPosition(prev => ({
-                ...prev,
-                x: Math.min(prev.x + speed, 25),
-            }));
+            newVelocityX = Math.min(newVelocityX + speed * delta * 15, speed * 1.5); // Reduced acceleration and max velocity
+            setIsThrusting(true);
+            lastThrustTime.current = Date.now();
+        }
+        if (keys.ArrowUp) {
+            setPitch(prev => Math.min(prev + 0.01 * delta * 30, 0.5));
+            setIsThrusting(true);
+            lastThrustTime.current = Date.now();
+        }
+        if (keys.ArrowDown) {
+            setPitch(prev => Math.max(prev - 0.01 * delta * 30, -0.5));
+            setIsThrusting(true);
+            lastThrustTime.current = Date.now();
+        }
+
+        // Auto-stop thrusting after a short time
+        if (Date.now() - lastThrustTime.current > 100) {
+            setIsThrusting(false);
+        }
+
+        setVelocity({ x: newVelocityX, y: newVelocityY });
+
+        // Apply velocity to position
+        setPosition(prev => ({
+            ...prev,
+            x: Math.min(Math.max(prev.x + newVelocityX, -25), 25),
+        }));
+
+        // Add subtle bobbing motion to simulate floating in space
+        const time = state.clock.getElapsedTime();
+        const bobY = Math.sin(time * 2) * 0.05;
+
+        if (shipRef.current) {
+            shipRef.current.position.y = shipPosition.y + bobY;
         }
 
         setBullets(prev => {
@@ -244,22 +334,27 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
                 ref={shipRef}
                 object={shipScene}
                 position={[shipPosition.x, shipPosition.y, shipPosition.z]}
-                rotation={[0.2, Math.PI, 0]}
-                scale={0.03}
+                rotation={[pitch, Math.PI, 0]}
+                scale={shipScale}
                 castShadow
+            />
+            <EngineFlame
+                pitch={pitch}
+                isThrusting={isThrusting}
+                shipPosition={shipPosition}
             />
             {bullets.map(bullet => (
                 <Bullet
                     key={bullet.id}
                     position={bullet.position}
                     scale={bullet.scale}
+                    velocity={bullet.velocity}
                 />
             ))}
         </group>
     );
 };
 
-// Star Background Component
 const StarBackground = () => {
     const count = 5000;
     const [positions] = useState(() => {
@@ -291,7 +386,6 @@ const StarBackground = () => {
     );
 };
 
-// Asteroid Field Component
 interface AsteroidFieldProps {
     asteroids: Asteroid[];
     setAsteroids: React.Dispatch<React.SetStateAction<Asteroid[]>>;
@@ -328,7 +422,7 @@ const AsteroidField: React.FC<AsteroidFieldProps> = ({ asteroids, setAsteroids, 
                 clearInterval(spawnInterval.current);
             }
         };
-    }, [gameOver, setAsteroids ]);
+    }, [gameOver, setAsteroids]);
 
     useFrame(() => {
         if (gameOver) return;
@@ -363,7 +457,6 @@ const AsteroidField: React.FC<AsteroidFieldProps> = ({ asteroids, setAsteroids, 
     );
 };
 
-// Asteroid Model Component
 const AsteroidModel: React.FC<{
     position: THREE.Vector3;
     rotation: THREE.Euler;
@@ -392,7 +485,6 @@ const AsteroidModel: React.FC<{
     );
 };
 
-// Main Scene Component with Collision Detection
 interface SceneProps {
     setScore: React.Dispatch<React.SetStateAction<number>>;
     setGameOver: React.Dispatch<React.SetStateAction<boolean>>;
@@ -462,7 +554,6 @@ const Scene: React.FC<SceneProps> = ({ setScore, setGameOver, gameOver }) => {
     );
 };
 
-// Main Game Component
 const Game: React.FC = () => {
     const [score, setScore] = useState<number>(0);
     const [gameOver, setGameOver] = useState<boolean>(false);
@@ -470,7 +561,6 @@ const Game: React.FC = () => {
     const [started, setStarted] = useState<boolean>(false);
     const router = useRouter();
 
-    // Handle chunk load errors
     useEffect(() => {
         const handleChunkLoadError = () => {
             console.error('Chunk load error detected, reloading page...');
@@ -513,89 +603,191 @@ const Game: React.FC = () => {
                     position: 'relative',
                     width: '100vw',
                     height: '100vh',
-                    background: 'radial-gradient(circle, #1a1a2e, #000000)', // Space-like gradient
+                    background: 'radial-gradient(circle, #1a1a2e, #000000)',
                     color: '#fff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexDirection: 'column',
                     textAlign: 'center',
+                    overflow: 'hidden',
                 }}
             >
-                <h1 style={{ fontSize: '48px', marginBottom: '20px', textShadow: '0 0 10px #ff4400' }}>
-                    Meteor Strike
+                {/* Add a background gradient for visual interest */}
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'radial-gradient(circle at center, rgba(255, 68, 0, 0.2) 0%, transparent 70%)',
+                    zIndex: 0,
+                }} />
+
+                <h1 style={{
+                    fontSize: 'clamp(2.5rem, 8vw, 4.5rem)',
+                    marginBottom: '1.5rem',
+                    background: 'linear-gradient(45deg, #ff8800, #ff4400)',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                    fontWeight: 700,
+                    textShadow: '0 2px 4px rgba(255, 136, 0, 0.3)',
+                    position: 'relative',
+                    zIndex: 1,
+                }}>
+                    METEOR STRIKE
                 </h1>
-                <p style={{ fontSize: '24px', maxWidth: '600px', marginBottom: '40px' }}>
-                    Defend Earth from incoming asteroids! Use <strong>Arrow Keys</strong> to move your spaceship and <strong>Spacebar</strong> to shoot.
+
+                <p style={{
+                    fontSize: 'clamp(1rem, 3vw, 1.5rem)',
+                    maxWidth: '600px',
+                    marginBottom: '3rem',
+                    background: 'linear-gradient(45deg, #ffffff, #cccccc)',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                    padding: '0 1rem',
+                    lineHeight: 1.6,
+                    position: 'relative',
+                    zIndex: 1,
+                }}>
+                    Defend Earth from incoming asteroids! Use <strong>Arrow Left/Right</strong> to move horizontally, <strong>Arrow Up/Down</strong> to tilt the ship, and <strong>Spacebar</strong> to shoot.
                 </p>
-                <button
-                    style={{
-                        padding: '15px 30px',
-                        fontSize: '24px',
-                        cursor: 'pointer',
-                        background: 'linear-gradient(45deg, #ff4400, #ff8800)',
-                        color: '#fff',
-                        border: '2px solid #ff4400',
-                        borderRadius: '10px',
-                        boxShadow: '0 0 15px #ff4400',
-                        transition: 'transform 0.2s',
-                    }}
-                    onClick={handleStart}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                >
-                    Start Game
-                </button>
+
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button
+                        style={{
+                            padding: '1rem 2.5rem',
+                            fontSize: '1.5rem',
+                            cursor: 'pointer',
+                            background: 'rgba(255, 136, 0, 0.15)',
+                            color: '#fff',
+                            border: '1px solid rgba(255, 136, 0, 0.5)',
+                            borderRadius: '12px',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                            transition: 'all 0.3s ease',
+                            position: 'relative',
+                            zIndex: 1,
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px',
+                        }}
+                        onClick={handleStart}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
+                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
+                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                    >
+                        Start Mission
+                    </button>
+
+                    <button
+                        style={{
+                            padding: '1rem 2rem',
+                            fontSize: '1.2rem',
+                            cursor: 'pointer',
+                            background: 'rgba(100, 100, 100, 0.15)',
+                            color: '#fff',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            borderRadius: '12px',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+                            transition: 'all 0.3s ease',
+                            position: 'relative',
+                            zIndex: 1,
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px',
+                        }}
+                        onClick={handleBackToHome}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(100, 100, 100, 0.25)';
+                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(100, 100, 100, 0.15)';
+                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                    >
+                        ← Back to Home
+                    </button>
+                </div>
             </div>
         );
     }
 
     return (
         <div className={spaceMono.className} style={{ position: 'relative', width: '100vw', height: '100vh' }}>
-            {/* Back to Home Button */}
             <button
                 style={{
                     position: 'absolute',
-                    top: '20px',
-                    left: '20px',
-                    padding: '10px 20px',
-                    fontSize: '18px',
+                    top: '1.5rem',
+                    left: '1.5rem',
+                    padding: '0.75rem 1.5rem',
+                    fontSize: '1rem',
                     cursor: 'pointer',
-                    background: 'linear-gradient(45deg, #ff4400, #ff8800)',
+                    background: 'rgba(255, 136, 0, 0.15)',
                     color: '#fff',
-                    border: '2px solid #ff4400',
-                    borderRadius: '5px',
-                    boxShadow: '0 0 10px #ff4400',
+                    border: '1px solid rgba(255, 136, 0, 0.5)',
+                    borderRadius: '8px',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 4px 20px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                    transition: 'all 0.3s ease',
                     zIndex: 1000,
-                    transition: 'transform 0.2s',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
                 }}
                 onClick={handleBackToHome}
-                onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                }}
             >
-                Back to Home
+                ← Back to Home
             </button>
 
-            {/* Score Display */}
             <div
                 style={{
                     position: 'absolute',
-                    top: '20px',
-                    right: '20px',
+                    top: '1.5rem',
+                    right: '1.5rem',
                     color: '#fff',
-                    fontSize: '24px',
+                    fontSize: '1.5rem',
                     zIndex: 1000,
-                    background: 'rgba(0,0,0,0.5)',
-                    padding: '10px 20px',
-                    borderRadius: '5px',
-                    border: '1px solid #ff4400',
-                    boxShadow: '0 0 5px #ff4400',
+                    background: 'rgba(0, 0, 0, 0.2)',
+                    backdropFilter: 'blur(10px)',
+                    padding: '0.75rem 1.5rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 136, 0, 0.3)',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
                 }}
             >
-                Score: {score}
+                Score: <span style={{
+                    background: 'linear-gradient(45deg, #ff8800, #ff4400)',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                    fontWeight: 'bold',
+                }}>{score}</span>
             </div>
 
-            {/* Game Over Screen */}
             {gameOver && (
                 <div
                     style={{
@@ -604,41 +796,71 @@ const Game: React.FC = () => {
                         left: '50%',
                         transform: 'translate(-50%, -50%)',
                         color: '#fff',
-                        fontSize: '48px',
+                        fontSize: 'clamp(2rem, 6vw, 3.5rem)',
                         zIndex: 1000,
-                        background: 'rgba(0,0,0,0.7)',
-                        padding: '20px 40px',
-                        borderRadius: '10px',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        backdropFilter: 'blur(12px)',
+                        padding: '2.5rem 3.5rem',
+                        borderRadius: '16px',
                         textAlign: 'center',
-                        border: '2px solid #ff4400',
-                        boxShadow: '0 0 20px #ff4400',
+                        border: '1px solid rgba(255, 136, 0, 0.3)',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                        width: 'clamp(300px, 80%, 500px)',
                     }}
                 >
-                    <div>Game Over</div>
-                    <div style={{ fontSize: '24px', marginTop: '20px' }}>
-                        Final Score: {score}
+                    <div style={{
+                        marginBottom: '1.5rem',
+                        background: 'linear-gradient(45deg, #ff8800, #ff4400)',
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        color: 'transparent',
+                        fontWeight: 'bold',
+                    }}>Mission Failed</div>
+
+                    <div style={{
+                        fontSize: 'clamp(1.2rem, 3vw, 1.8rem)',
+                        marginBottom: '2.5rem',
+                        background: 'linear-gradient(45deg, #ffffff, #cccccc)',
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        color: 'transparent',
+                    }}>
+                        Final Score: <span style={{ fontWeight: 'bold' }}>{score}</span>
                     </div>
+
                     <button
                         style={{
-                            marginTop: '20px',
-                            padding: '10px 20px',
-                            fontSize: '18px',
+                            padding: '1rem 2rem',
+                            fontSize: '1.2rem',
                             cursor: 'pointer',
-                            background: 'linear-gradient(45deg, #ff4400, #ff8800)',
+                            background: 'rgba(255, 136, 0, 0.2)',
                             color: '#fff',
-                            border: '2px solid #ff4400',
-                            borderRadius: '5px',
-                            boxShadow: '0 0 10px #ff4400',
-                            transition: 'transform 0.2s',
+                            border: '1px solid rgba(255, 136, 0, 0.5)',
+                            borderRadius: '10px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                            transition: 'all 0.3s ease',
+                            fontWeight: 'bold',
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px',
                         }}
                         onClick={handleRestart}
-                        onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                        }}
                     >
-                        Restart Game
+                        Redeploy
                     </button>
                 </div>
             )}
+
             <Canvas
                 shadows
                 camera={{

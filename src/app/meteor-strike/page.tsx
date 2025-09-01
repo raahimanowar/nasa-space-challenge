@@ -259,19 +259,17 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
     useFrame((state, delta) => {
         if (gameOver) return;
 
-        // Apply stronger damping and less responsive movement
-        const damping = 0.85; // Increased damping for quicker stopping
+        const damping = 0.85;
         let newVelocityX = velocity.x * damping;
         const newVelocityY = velocity.y * damping;
 
-        // Apply thrust with reduced acceleration
         if (keys.ArrowLeft) {
-            newVelocityX = Math.max(newVelocityX - speed * delta * 15, -speed * 1.5); // Reduced acceleration and max velocity
+            newVelocityX = Math.max(newVelocityX - speed * delta * 15, -speed * 1.5);
             setIsThrusting(true);
             lastThrustTime.current = Date.now();
         }
         if (keys.ArrowRight) {
-            newVelocityX = Math.min(newVelocityX + speed * delta * 15, speed * 1.5); // Reduced acceleration and max velocity
+            newVelocityX = Math.min(newVelocityX + speed * delta * 15, speed * 1.5);
             setIsThrusting(true);
             lastThrustTime.current = Date.now();
         }
@@ -286,20 +284,17 @@ const SpaceshipModel: React.FC<SpaceshipModelProps> = ({ bullets, setBullets, ga
             lastThrustTime.current = Date.now();
         }
 
-        // Auto-stop thrusting after a short time
         if (Date.now() - lastThrustTime.current > 100) {
             setIsThrusting(false);
         }
 
         setVelocity({ x: newVelocityX, y: newVelocityY });
 
-        // Apply velocity to position
         setPosition(prev => ({
             ...prev,
             x: Math.min(Math.max(prev.x + newVelocityX, -25), 25),
         }));
 
-        // Add subtle bobbing motion to simulate floating in space
         const time = state.clock.getElapsedTime();
         const bobY = Math.sin(time * 2) * 0.05;
 
@@ -502,6 +497,7 @@ const Scene: React.FC<SceneProps> = ({ setScore, setGameOver, gameOver }) => {
 
     useFrame(() => {
         if (Date.now() - startTime.current < 2000) return;
+        if (gameOver) return;
 
         const hitAsteroidIds = new Set<string>();
         const hitBulletIds = new Set<string>();
@@ -527,7 +523,7 @@ const Scene: React.FC<SceneProps> = ({ setScore, setGameOver, gameOver }) => {
 
         asteroids.forEach(asteroid => {
             const distanceToShip = asteroid.position.distanceTo(shipPosition);
-            if (distanceToShip < shipRadius + asteroid.scale) {
+            if (distanceToShip < shipRadius + asteroid.scale && !gameOver) {
                 console.log('Game Over: Asteroid hit Spaceship');
                 setGameOver(true);
             }
@@ -559,7 +555,29 @@ const Game: React.FC = () => {
     const [gameOver, setGameOver] = useState<boolean>(false);
     const [resetKey, setResetKey] = useState<number>(0);
     const [started, setStarted] = useState<boolean>(false);
+    const [isMobile, setIsMobile] = useState<boolean>(false);
     const router = useRouter();
+
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth <= 768);
+        };
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    const handleButtonDown = (key: string) => {
+        if (gameOver) return;
+        const event = new KeyboardEvent('keydown', { key, code: key === 'Space' ? 'Space' : key });
+        window.dispatchEvent(event);
+    };
+
+    const handleButtonUp = (key: string) => {
+        if (gameOver) return;
+        const event = new KeyboardEvent('keyup', { key, code: key === 'Space' ? 'Space' : key });
+        window.dispatchEvent(event);
+    };
 
     useEffect(() => {
         const handleChunkLoadError = () => {
@@ -613,7 +631,6 @@ const Game: React.FC = () => {
                     overflow: 'hidden',
                 }}
             >
-                {/* Add a background gradient for visual interest */}
                 <div style={{
                     position: 'absolute',
                     top: 0,
@@ -625,8 +642,8 @@ const Game: React.FC = () => {
                 }} />
 
                 <h1 style={{
-                    fontSize: 'clamp(2.5rem, 8vw, 4.5rem)',
-                    marginBottom: '1.5rem',
+                    fontSize: 'clamp(2rem, 8vw, 4rem)',
+                    marginBottom: '1rem',
                     background: 'linear-gradient(45deg, #ff8800, #ff4400)',
                     WebkitBackgroundClip: 'text',
                     backgroundClip: 'text',
@@ -640,50 +657,59 @@ const Game: React.FC = () => {
                 </h1>
 
                 <p style={{
-                    fontSize: 'clamp(1rem, 3vw, 1.5rem)',
-                    maxWidth: '600px',
-                    marginBottom: '3rem',
+                    fontSize: 'clamp(0.9rem, 2.5vw, 1.2rem)',
+                    maxWidth: '90%',
+                    marginBottom: '2rem',
                     background: 'linear-gradient(45deg, #ffffff, #cccccc)',
                     WebkitBackgroundClip: 'text',
                     backgroundClip: 'text',
                     color: 'transparent',
-                    padding: '0 1rem',
+                    padding: '0 0.5rem',
                     lineHeight: 1.6,
                     position: 'relative',
                     zIndex: 1,
                 }}>
-                    Defend Earth from incoming asteroids! Use <strong>Arrow Left/Right</strong> to move horizontally, <strong>Arrow Up/Down</strong> to tilt the ship, and <strong>Spacebar</strong> to shoot.
+                    Defend Earth from incoming asteroids! Use <strong>Arrow Left/Right</strong> to move horizontally, <strong>Arrow Up/Down</strong> to tilt the ship, and <strong>Spacebar</strong> to shoot. On mobile, use the on-screen buttons.
                 </p>
 
-                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button
                         style={{
-                            padding: '1rem 2.5rem',
-                            fontSize: '1.5rem',
+                            padding: '0.8rem 2rem',
+                            fontSize: 'clamp(1rem, 3vw, 1.2rem)',
                             cursor: 'pointer',
                             background: 'rgba(255, 136, 0, 0.15)',
                             color: '#fff',
                             border: '1px solid rgba(255, 136, 0, 0.5)',
-                            borderRadius: '12px',
-                            backdropFilter: 'blur(10px)',
-                            boxShadow: '0 8px 32px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                            borderRadius: '10px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
                             transition: 'all 0.3s ease',
                             position: 'relative',
                             zIndex: 1,
                             fontWeight: 'bold',
                             textTransform: 'uppercase',
-                            letterSpacing: '1px',
+                            letterSpacing: '0.5px',
+                            touchAction: 'manipulation',
                         }}
                         onClick={handleStart}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
-                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
                             e.currentTarget.style.transform = 'translateY(-2px)';
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
-                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
                             e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                        onTouchStart={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                        }}
+                        onTouchEnd={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
+                            e.currentTarget.style.transform = 'scale(1)';
                         }}
                     >
                         Start Mission
@@ -691,32 +717,41 @@ const Game: React.FC = () => {
 
                     <button
                         style={{
-                            padding: '1rem 2rem',
-                            fontSize: '1.2rem',
+                            padding: '0.8rem 1.5rem',
+                            fontSize: 'clamp(0.9rem, 2.5vw, 1rem)',
                             cursor: 'pointer',
                             background: 'rgba(100, 100, 100, 0.15)',
                             color: '#fff',
                             border: '1px solid rgba(255, 255, 255, 0.3)',
-                            borderRadius: '12px',
-                            backdropFilter: 'blur(10px)',
-                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+                            borderRadius: '10px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 6px 24px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
                             transition: 'all 0.3s ease',
                             position: 'relative',
                             zIndex: 1,
                             fontWeight: 'bold',
                             textTransform: 'uppercase',
-                            letterSpacing: '1px',
+                            letterSpacing: '0.5px',
+                            touchAction: 'manipulation',
                         }}
                         onClick={handleBackToHome}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(100, 100, 100, 0.25)';
-                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
                             e.currentTarget.style.transform = 'translateY(-2px)';
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.background = 'rgba(100, 100, 100, 0.15)';
-                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)';
+                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)';
                             e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                        onTouchStart={(e) => {
+                            e.currentTarget.style.background = 'rgba(100, 100, 100, 0.25)';
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                        }}
+                        onTouchEnd={(e) => {
+                            e.currentTarget.style.background = 'rgba(100, 100, 100, 0.15)';
+                            e.currentTarget.style.transform = 'scale(1)';
                         }}
                     >
                         ← Back to Home
@@ -731,52 +766,62 @@ const Game: React.FC = () => {
             <button
                 style={{
                     position: 'absolute',
-                    top: '1.5rem',
-                    left: '1.5rem',
-                    padding: '0.75rem 1.5rem',
-                    fontSize: '1rem',
+                    top: 'clamp(0.8rem, 2vw, 1rem)',
+                    left: 'clamp(0.8rem, 2vw, 1rem)',
+                    padding: 'clamp(0.5rem, 1.5vw, 0.75rem) clamp(1rem, 2.5vw, 1.25rem)',
+                    fontSize: 'clamp(0.8rem, 2.5vw, 1rem)',
                     cursor: 'pointer',
                     background: 'rgba(255, 136, 0, 0.15)',
                     color: '#fff',
                     border: '1px solid rgba(255, 136, 0, 0.5)',
                     borderRadius: '8px',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: '0 4px 20px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                    backdropFilter: 'blur(8px)',
+                    boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
                     transition: 'all 0.3s ease',
                     zIndex: 1000,
                     fontWeight: 'bold',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
+                    touchAction: 'manipulation',
+                    pointerEvents: 'auto',
                 }}
                 onClick={handleBackToHome}
                 onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
                     e.currentTarget.style.transform = 'translateY(-2px)';
                 }}
                 onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
                     e.currentTarget.style.transform = 'translateY(0)';
                 }}
+                onTouchStart={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 136, 0, 0.25)';
+                    e.currentTarget.style.transform = 'scale(0.95)';
+                }}
+                onTouchEnd={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 136, 0, 0.15)';
+                    e.currentTarget.style.transform = 'scale(1)';
+                }}
             >
-                ← Back to Home
+                ← Back
             </button>
 
             <div
                 style={{
                     position: 'absolute',
-                    top: '1.5rem',
-                    right: '1.5rem',
+                    top: 'clamp(0.8rem, 2vw, 1rem)',
+                    right: 'clamp(0.8rem, 2vw, 1rem)',
                     color: '#fff',
-                    fontSize: '1.5rem',
+                    fontSize: 'clamp(1rem, 3vw, 1.2rem)',
                     zIndex: 1000,
                     background: 'rgba(0, 0, 0, 0.2)',
-                    backdropFilter: 'blur(10px)',
-                    padding: '0.75rem 1.5rem',
+                    backdropFilter: 'blur(8px)',
+                    padding: 'clamp(0.5rem, 1.5vw, 0.75rem) clamp(1rem, 2.5vw, 1.25rem)',
                     borderRadius: '8px',
                     border: '1px solid rgba(255, 136, 0, 0.3)',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
                 }}
             >
                 Score: <span style={{
@@ -788,6 +833,199 @@ const Game: React.FC = () => {
                 }}>{score}</span>
             </div>
 
+            {isMobile && started && !gameOver && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: 'clamp(0.8rem, 2vw, 1rem)',
+                    left: 'clamp(0.8rem, 2vw, 1rem)',
+                    right: 'clamp(0.8rem, 2vw, 1rem)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    zIndex: 1000,
+                    pointerEvents: 'none',
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        pointerEvents: 'auto',
+                    }}>
+                        <button
+                            style={{
+                                width: 'clamp(40px, 10vw, 50px)',
+                                height: 'clamp(40px, 10vw, 50px)',
+                                fontSize: 'clamp(1rem, 3vw, 1.2rem)',
+                                cursor: 'pointer',
+                                background: 'rgba(255, 136, 0, 0.2)',
+                                color: '#fff',
+                                border: '1px solid rgba(255, 136, 0, 0.5)',
+                                borderRadius: '8px',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3)',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                touchAction: 'manipulation',
+                            }}
+                            onTouchStart={() => handleButtonDown('ArrowLeft')}
+                            onTouchEnd={() => handleButtonUp('ArrowLeft')}
+                            onMouseDown={() => handleButtonDown('ArrowLeft')}
+                            onMouseUp={() => handleButtonUp('ArrowLeft')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                                e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                        >
+                            ←
+                        </button>
+                        <button
+                            style={{
+                                width: 'clamp(40px, 10vw, 50px)',
+                                height: 'clamp(40px, 10vw, 50px)',
+                                fontSize: 'clamp(1rem, 3vw, 1.2rem)',
+                                cursor: 'pointer',
+                                background: 'rgba(255, 136, 0, 0.2)',
+                                color: '#fff',
+                                border: '1px solid rgba(255, 136, 0, 0.5)',
+                                borderRadius: '8px',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3)',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                touchAction: 'manipulation',
+                            }}
+                            onTouchStart={() => handleButtonDown('ArrowRight')}
+                            onTouchEnd={() => handleButtonUp('ArrowRight')}
+                            onMouseDown={() => handleButtonDown('ArrowRight')}
+                            onMouseUp={() => handleButtonUp('ArrowRight')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                                e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                        >
+                            →
+                        </button>
+                    </div>
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                        pointerEvents: 'auto',
+                    }}>
+                        <button
+                            style={{
+                                width: 'clamp(40px, 10vw, 50px)',
+                                height: 'clamp(40px, 10vw, 50px)',
+                                fontSize: 'clamp(1rem, 3vw, 1.2rem)',
+                                cursor: 'pointer',
+                                background: 'rgba(255, 136, 0, 0.2)',
+                                color: '#fff',
+                                border: '1px solid rgba(255, 136, 0, 0.5)',
+                                borderRadius: '8px',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3)',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                touchAction: 'manipulation',
+                            }}
+                            onTouchStart={() => handleButtonDown('ArrowUp')}
+                            onTouchEnd={() => handleButtonUp('ArrowUp')}
+                            onMouseDown={() => handleButtonDown('ArrowUp')}
+                            onMouseUp={() => handleButtonUp('ArrowUp')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                                e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                        >
+                            ↑
+                        </button>
+                        <button
+                            style={{
+                                width: 'clamp(40px, 10vw, 50px)',
+                                height: 'clamp(40px, 10vw, 50px)',
+                                fontSize: 'clamp(1rem, 3vw, 1.2rem)',
+                                cursor: 'pointer',
+                                background: 'rgba(255, 136, 0, 0.2)',
+                                color: '#fff',
+                                border: '1px solid rgba(255, 136, 0, 0.5)',
+                                borderRadius: '8px',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3)',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                touchAction: 'manipulation',
+                            }}
+                            onTouchStart={() => handleButtonDown('ArrowDown')}
+                            onTouchEnd={() => handleButtonUp('ArrowDown')}
+                            onMouseDown={() => handleButtonDown('ArrowDown')}
+                            onMouseUp={() => handleButtonUp('ArrowDown')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                                e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                        >
+                            ↓
+                        </button>
+                    </div>
+                    <button
+                        style={{
+                            width: 'clamp(60px, 15vw, 70px)',
+                            height: 'clamp(60px, 15vw, 70px)',
+                            fontSize: 'clamp(0.9rem, 2.5vw, 1rem)',
+                            cursor: 'pointer',
+                            background: 'rgba(255, 68, 0, 0.3)',
+                            color: '#fff',
+                            border: '1px solid rgba(255, 68, 0, 0.7)',
+                            borderRadius: '50%',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 4px 16px rgba(255, 68, 0, 0.4)',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
+                        }}
+                        onTouchStart={() => handleButtonDown('Space')}
+                        onTouchEnd={() => handleButtonUp('Space')}
+                        onMouseDown={() => handleButtonDown('Space')}
+                        onMouseUp={() => handleButtonUp('Space')}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 68, 0, 0.4)';
+                            e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 68, 0, 0.3)';
+                            e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                    >
+                        FIRE
+                    </button>
+                </div>
+            )}
+
             {gameOver && (
                 <div
                     style={{
@@ -796,20 +1034,20 @@ const Game: React.FC = () => {
                         left: '50%',
                         transform: 'translate(-50%, -50%)',
                         color: '#fff',
-                        fontSize: 'clamp(2rem, 6vw, 3.5rem)',
+                        fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
                         zIndex: 1000,
                         background: 'rgba(0, 0, 0, 0.4)',
                         backdropFilter: 'blur(12px)',
-                        padding: '2.5rem 3.5rem',
-                        borderRadius: '16px',
+                        padding: 'clamp(1.5rem, 4vw, 2rem) clamp(2rem, 5vw, 2.5rem)',
+                        borderRadius: '12px',
                         textAlign: 'center',
                         border: '1px solid rgba(255, 136, 0, 0.3)',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-                        width: 'clamp(300px, 80%, 500px)',
+                        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.3)',
+                        width: 'clamp(250px, 80%, 400px)',
                     }}
                 >
                     <div style={{
-                        marginBottom: '1.5rem',
+                        marginBottom: '1rem',
                         background: 'linear-gradient(45deg, #ff8800, #ff4400)',
                         WebkitBackgroundClip: 'text',
                         backgroundClip: 'text',
@@ -818,8 +1056,8 @@ const Game: React.FC = () => {
                     }}>Mission Failed</div>
 
                     <div style={{
-                        fontSize: 'clamp(1.2rem, 3vw, 1.8rem)',
-                        marginBottom: '2.5rem',
+                        fontSize: 'clamp(0.9rem, 2.5vw, 1.2rem)',
+                        marginBottom: '1.5rem',
                         background: 'linear-gradient(45deg, #ffffff, #cccccc)',
                         WebkitBackgroundClip: 'text',
                         backgroundClip: 'text',
@@ -830,30 +1068,39 @@ const Game: React.FC = () => {
 
                     <button
                         style={{
-                            padding: '1rem 2rem',
-                            fontSize: '1.2rem',
+                            padding: 'clamp(0.8rem, 2vw, 1rem) clamp(1.5rem, 3vw, 2rem)',
+                            fontSize: 'clamp(0.9rem, 2.5vw, 1rem)',
                             cursor: 'pointer',
                             background: 'rgba(255, 136, 0, 0.2)',
                             color: '#fff',
                             border: '1px solid rgba(255, 136, 0, 0.5)',
-                            borderRadius: '10px',
+                            borderRadius: '8px',
                             backdropFilter: 'blur(8px)',
-                            boxShadow: '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
+                            boxShadow: '0 4px 16px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
                             transition: 'all 0.3s ease',
                             fontWeight: 'bold',
                             textTransform: 'uppercase',
-                            letterSpacing: '1px',
+                            letterSpacing: '0.5px',
+                            touchAction: 'manipulation',
                         }}
                         onClick={handleRestart}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
-                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.boxShadow = '0 4px 16px rgba(255, 68, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)';
                             e.currentTarget.style.transform = 'translateY(-2px)';
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
-                            e.currentTarget.style.boxShadow = '0 6px 24px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.boxShadow = '0 4px 16px rgba(255, 68, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)';
                             e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                        onTouchStart={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.3)';
+                            e.currentTarget.style.transform = 'scale(0.95)';
+                        }}
+                        onTouchEnd={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 136, 0, 0.2)';
+                            e.currentTarget.style.transform = 'scale(1)';
                         }}
                     >
                         Redeploy

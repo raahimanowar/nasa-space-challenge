@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Groq } from 'groq-sdk';
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
 
 interface ChatRequest {
   message: string;
@@ -162,96 +167,76 @@ interface AsteroidAnalysis {
   };
 }
 
-function generateResponse(queryType: string, analysis: AsteroidAnalysis, userMessage: string = ''): string {
-  // If no data available, return "I don't have info"
-  if (!analysis || !analysis.totalCount) {
-    return "I don't have current asteroid data available right now. Please try again later.";
+async function processWithGroq(nasaData: NeoFeedResponse, userMessage: string): Promise<string> {
+  try {
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "user",
+          content: `You are a friendly space expert. The user asked: "${userMessage}"
+
+Based on this NASA asteroid data, provide a friendly, easy-to-understand response. Don't add any information that isn't in the data - just make the existing NASA data more accessible and conversational:
+
+${JSON.stringify(nasaData, null, 2)}
+
+Keep your response informative but friendly, and explain technical terms in simple language.`
+        }
+      ],
+      model: "llama-3.1-8b-instant",
+      temperature: 0.7,
+      max_completion_tokens: 1024,
+      top_p: 1,
+      stream: false
+    });
+
+    return chatCompletion.choices[0]?.message?.content || 'Sorry, I had trouble processing that information.';
+  } catch (error) {
+    console.error('Groq API error:', error);
+    // Fallback to original response if Groq fails
+    return 'I have the NASA data but had trouble making it more readable. Please try again.';
+  }
+}
+
+async function fetchWithTimeout(url: string, timeout: number = 10000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'NASA-Space-Challenge-App/1.0'
+      }
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function fetchNASADataWithRetry(nasaUrl: string, maxRetries: number = 3): Promise<Response> {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempting NASA API call (attempt ${attempt}/${maxRetries}): ${nasaUrl}`);
+      const response = await fetchWithTimeout(nasaUrl, 15000); // 15 second timeout
+      return response;
+    } catch (error) {
+      lastError = error;
+      console.error(`NASA API attempt ${attempt} failed:`, error);
+
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
 
-  switch (queryType) {
-    case 'greeting':
-      // Still provide a greeting but with current data
-      return `Hello! I have current data on ${analysis.totalCount} asteroids from NASA. What would you like to know about them?`;
-
-    case 'hazardous':
-      if (analysis.hazardousCount === 0) {
-        return `Based on current NASA data, there are no potentially hazardous asteroids approaching Earth this week. I'm tracking ${analysis.totalCount} asteroids total.`;
-      }
-
-      const featured = analysis.hazardousAsteroids[0];
-      const diameter = `${featured.estimated_diameter.kilometers.estimated_diameter_min.toFixed(3)} - ${featured.estimated_diameter.kilometers.estimated_diameter_max.toFixed(3)}`;
-      const distance = formatDistance(parseFloat(featured.close_approach_data[0]?.miss_distance.kilometers || '0'));
-      const date = featured.close_approach_data[0]?.close_approach_date;
-
-      return `I found ${analysis.hazardousCount} potentially hazardous asteroids in current NASA data:\n\n${featured.name}\nDiameter: ${diameter} km\nClosest approach: ${date}\nDistance: ${distance}\n\nPotentially hazardous means larger than 140m and comes within 7.5 million km of Earth's orbit.`;
-
-    case 'size':
-      const asteroid = analysis.largest.asteroid;
-      const sizeDiameter = `${asteroid.estimated_diameter.kilometers.estimated_diameter_min.toFixed(3)} - ${asteroid.estimated_diameter.kilometers.estimated_diameter_max.toFixed(3)}`;
-      
-      let comparison = '';
-      if (analysis.largest.diameter > 1) {
-        comparison = '\n\nThis is larger than most city blocks!';
-      } else if (analysis.largest.diameter > 0.1) {
-        comparison = '\n\nThis is about the size of a large building.';
-      } else {
-        comparison = '\n\nThis is roughly the size of a house.';
-      }
-
-      return `The largest asteroid in current NASA data:\n\n${asteroid.name}\nDiameter: ${sizeDiameter} km\nPotentially hazardous: ${asteroid.is_potentially_hazardous_asteroid ? 'Yes' : 'No'}${comparison}`;
-
-    case 'distance':
-      const closeAsteroid = analysis.closest.asteroid;
-      const closeDistance = formatDistance(analysis.closest.distance);
-      const closeDate = closeAsteroid.close_approach_data[0]?.close_approach_date;
-      const moonRatio = analysis.closest.distanceFromMoon.toFixed(1);
-
-      return `The closest asteroid in current NASA data:\n\n${closeAsteroid.name}\nDate: ${closeDate}\nDistance: ${closeDistance}\n\nThis is ${moonRatio} times the distance to the Moon.\n\n${analysis.closest.distance < 1000000 ? 'This is considered a close approach!' : 'This is a safe distance from Earth.'}`;
-
-    case 'speed':
-      const speedAsteroid = analysis.fastest.asteroid;
-      const speed = formatSpeed(analysis.fastest.speed);
-      const speedKmh = analysis.fastest.speed * 3600;
-      
-      let speedComparison = '';
-      if (speedKmh > 100000) {
-        speedComparison = `\n\nThat's about ${Math.round(speedKmh / 300)} times faster than a Formula 1 car!`;
-      } else if (speedKmh > 50000) {
-        speedComparison = `\n\nThat's about ${Math.round(speedKmh / 900)} times faster than a commercial jet!`;
-      } else {
-        speedComparison = `\n\nThat's about ${Math.round(speedKmh / 120)} times faster than highway speed!`;
-      }
-
-      return `The fastest asteroid in current NASA data:\n\n${speedAsteroid.name}\nSpeed: ${speed}${speedComparison}`;
-
-    case 'count':
-      return `Current NASA asteroid statistics:\n\nTotal NEOs tracked this week: ${analysis.totalCount}\nPotentially hazardous: ${analysis.hazardousCount}\n\nNASA monitors over 28,000 known Near-Earth Objects continuously.`;
-
-    default:
-      // For any other query, try to find relevant information in the data
-      const userQuery = userMessage.toLowerCase();
-      
-      // Try to match user intent with available data
-      if (userQuery.includes('smallest') || userQuery.includes('small')) {
-        const smallestAsteroid = analysis.closest.asteroid; // Use closest as proxy for smaller ones
-        const smallDiameter = `${smallestAsteroid.estimated_diameter.kilometers.estimated_diameter_min.toFixed(3)} - ${smallestAsteroid.estimated_diameter.kilometers.estimated_diameter_max.toFixed(3)}`;
-        return `Based on current NASA data, here's information about ${smallestAsteroid.name}:\n\nDiameter: ${smallDiameter} km\nDistance: ${formatDistance(analysis.closest.distance)}`;
-      }
-      
-      if (userQuery.includes('today') || userQuery.includes('now') || userQuery.includes('current')) {
-        return `Current NASA data shows ${analysis.totalCount} asteroids being tracked this week. ${analysis.hazardousCount} are potentially hazardous. The closest is ${analysis.closest.asteroid.name} at ${formatDistance(analysis.closest.distance)}.`;
-      }
-      
-      // Default: provide general current data
-      const randomAsteroid = analysis.hazardousAsteroids.length > 0 
-        ? analysis.hazardousAsteroids[Math.floor(Math.random() * analysis.hazardousAsteroids.length)]
-        : analysis.closest.asteroid;
-      
-      const genDiameter = `${randomAsteroid.estimated_diameter.kilometers.estimated_diameter_min.toFixed(3)} - ${randomAsteroid.estimated_diameter.kilometers.estimated_diameter_max.toFixed(3)}`;
-      const genDistance = formatDistance(parseFloat(randomAsteroid.close_approach_data[0]?.miss_distance.kilometers || '0'));
-
-      return `Based on your question, here's current NASA data about ${randomAsteroid.name}:\n\nDiameter: ${genDiameter} km\nDistance: ${genDistance}\nPotentially hazardous: ${randomAsteroid.is_potentially_hazardous_asteroid ? 'Yes' : 'No'}\n\nI have data on ${analysis.totalCount} asteroids total. Ask me for specific details!`;
-  }
+  throw lastError;
 }
 
 export async function POST(request: NextRequest) {
@@ -288,8 +273,8 @@ export async function POST(request: NextRequest) {
     // Fetch data from NASA NeoWs API
     const nasaUrl = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDateStr}&end_date=${endDateStr}&api_key=${nasaApiKey}`;
     
-    const response = await fetch(nasaUrl);
-    
+    const response = await fetchNASADataWithRetry(nasaUrl);
+
     if (!response.ok) {
       if (response.status === 429) {
         return NextResponse.json(
@@ -329,7 +314,7 @@ export async function POST(request: NextRequest) {
     // Analyze asteroid data
     const analysis = analyzeAsteroids(asteroids);
     
-    const responseText = generateResponse(queryType, analysis, message);
+    const responseText = await processWithGroq(nasaData, message);
 
     return NextResponse.json({
       response: responseText,
